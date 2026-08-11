@@ -2,15 +2,15 @@
 """
 MEXC Event Futures Multi-Agent Signal Bot
 - Only ETH_USDT + BTC_USDT
-- 4 agents voting
-- Session based (on/off by user)
-- Auto win/loss detection after 10 minutes
-- History tracking
+- 4 agents, need ALL 4 agree, min 65%
+- First message: prepare in 1 minute
+- Then signal with direction
 """
 
 import os
 import json
 import logging
+import asyncio
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List
@@ -44,10 +44,8 @@ system = MultiAgentSystem()
 
 def load_json(path: Path, default):
     if path.exists():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        try: return json.loads(path.read_text(encoding="utf-8"))
+        except Exception: pass
     return default
 
 def save_json(path: Path, data):
@@ -74,6 +72,16 @@ def get_active_signals() -> List[Dict]:
 def save_active_signals(signals: List[Dict]):
     save_json(ACTIVE_SIGNALS_FILE, signals)
 
+def format_prepare(symbol: str) -> str:
+    nice = symbol.replace("_", "")
+    return (
+        f"⚡️ *ПІДГОТУЙСЯ*\n\n"
+        f"Зайди на пару: *{nice}*\n"
+        f"Вибери суму і чекай.\n\n"
+        f"Через *1 хвилину* надійде точний сигнал\n"
+        f"(напрямок + шанс)."
+    )
+
 def format_signal(res: Dict) -> str:
     if res["action"] != "SIGNAL":
         return None
@@ -86,33 +94,31 @@ def format_signal(res: Dict) -> str:
         f"{emoji}  *СИГНАЛ*\n\n"
         f"Пара: *{res['symbol']}*\n"
         f"Напрямок: *{res['direction']}*\n"
-        f"Впевненість: *{res['confidence']}%*\n"
-        f"Згодилися: *{res['agreed']}/4* агентів\n"
+        f"Шанс: *{res['confidence']}%*\n"
+        f"Згодилися: *{res['agreed']}/4*\n"
         f"Ціна входу: `{res['price']}`\n"
-        f"Експірація: *10 хвилин*\n\n"
-        f"🤖 Голоси агентів:\n{agents_text}\n"
-        f"_Після 10 хв система сама перевірить результат._"
+        f"Експірація: *10 хв*\n\n"
+        f"🤖 Голоси:\n{agents_text}"
     )
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "🤖 *MEXC Multi-Agent Signal Bot*\n\n"
         "Тільки *ETHUSDT* і *BTCUSDT*\n"
-        "4 агенти + мін. 60% + 3 з 4 голосів\n\n"
+        "Потрібна згода всіх 4 агентів + мін. 65%\n\n"
         "Команди:\n"
-        "`/session` — увімкнути сесію\n"
-        "`/stop` — вимкнути сесію\n"
+        "`/session` — увімкнути\n"
+        "`/stop` — вимкнути\n"
         "`/status` — стан\n"
-        "`/history` — останні результати\n"
-        "`/force` — перевірити ринок зараз\n\n"
-        "Коли сесія увімкнена — бот сам шукає і пише сигнали."
+        "`/history` — історія\n"
+        "`/force` — перевірити зараз"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
 async def session_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     set_session(True, chat_id)
-    await update.message.reply_text("✅ *Сесія увімкнена*\n\nБот аналізує ETHUSDT і BTCUSDT.\nЩоб зупинити — /stop", parse_mode="Markdown")
+    await update.message.reply_text("✅ *Сесія увімкнена*\n\nБот аналізує ринок.\nЩоб зупинити — /stop", parse_mode="Markdown")
     await run_scan(context, chat_id)
 
 async def stop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -169,14 +175,28 @@ async def run_scan(context: ContextTypes.DEFAULT_TYPE, chat_id: int, force: bool
             continue
         if any(s["symbol"] == res["symbol"] and s.get("status") == "open" for s in active):
             continue
+
+        # 1. Prepare message
+        prepare_text = format_prepare(res["symbol"])
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=prepare_text, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Prepare send error: {e}")
+            continue
+
+        # Wait ~1 minute
+        await asyncio.sleep(55)
+
+        # 2. Full signal
         text = format_signal(res)
         if not text:
             continue
         try:
             await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
         except Exception as e:
-            logger.error(f"Send error: {e}")
+            logger.error(f"Signal send error: {e}")
             continue
+
         signal_record = {
             "id": f"{res['symbol']}_{int(now.timestamp())}",
             "symbol": res["symbol"],
@@ -195,15 +215,13 @@ async def run_scan(context: ContextTypes.DEFAULT_TYPE, chat_id: int, force: bool
 
 async def check_results(context: ContextTypes.DEFAULT_TYPE):
     active = get_active_signals()
-    if not active:
-        return
+    if not active: return
     now = datetime.now(timezone.utc)
     still_open = []
     sess = get_session()
     chat_id = sess.get("chat_id")
     for sig in active:
-        if sig.get("status") != "open":
-            continue
+        if sig.get("status") != "open": continue
         expires = datetime.fromisoformat(sig["expires_at"].replace("Z", "+00:00"))
         if now < expires + timedelta(seconds=45):
             still_open.append(sig)
@@ -225,29 +243,24 @@ async def check_results(context: ContextTypes.DEFAULT_TYPE):
         add_to_history(sig)
         if chat_id:
             emoji = "✅ ВИГРАШ" if won else "❌ ПРОГРАШ"
-            text = f"{emoji}\n\nПара: *{sig['symbol']}*\nНапрямок: {sig['direction']}\nВхід: `{entry}` → Вихід: `{current_price}`\nВпевненість була: {sig['confidence']}%"
+            text = f"{emoji}\n\nПара: *{sig['symbol']}*\nНапрямок: {sig['direction']}\nВхід: `{entry}` → Вихід: `{current_price}`\nШанс був: {sig['confidence']}%"
             try:
                 await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
-            except Exception:
-                pass
+            except Exception: pass
         logger.info(f"Result {result}: {sig['symbol']} {direction}")
     save_active_signals(still_open)
 
 async def periodic_job(context: ContextTypes.DEFAULT_TYPE):
     sess = get_session()
-    if not sess.get("active"):
-        return
+    if not sess.get("active"): return
     chat_id = sess.get("chat_id")
-    if not chat_id:
-        return
+    if not chat_id: return
     await check_results(context)
     await run_scan(context, chat_id)
 
 def main():
     if BOT_TOKEN == "PASTE_YOUR_BOT_TOKEN_HERE":
-        print("=" * 50)
         print("Встав TELEGRAM_BOT_TOKEN в .env або змінну середовища!")
-        print("=" * 50)
         return
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_cmd))
