@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from enum import StrEnum
 from hashlib import sha256
@@ -65,7 +66,12 @@ class ActionRequest(BaseModel):
     requires_human_auth: bool = False
 
     def digest(self) -> str:
-        stable = self.model_dump_json(exclude_none=False)
+        stable = json.dumps(
+            self.model_dump(mode="json", exclude_none=False),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         return sha256(stable.encode("utf-8")).hexdigest()
 
 
