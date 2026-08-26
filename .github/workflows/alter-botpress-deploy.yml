@@ -44,6 +44,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Set up Bun
+        if: steps.auth.outputs.configured == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2.21'
+
       - name: Install dependencies
         if: steps.auth.outputs.configured == 'true'
         working-directory: ALTER/botpress
