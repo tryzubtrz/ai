@@ -1,8 +1,15 @@
+import AppIntents
 import SwiftUI
 
 @main
 struct ALTERCompanionApp: App {
     @State private var appState = AppState()
+
+    init() {
+        if #available(iOS 26.0, *) {
+            ALTERAppShortcuts.updateAppShortcutParameters()
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
