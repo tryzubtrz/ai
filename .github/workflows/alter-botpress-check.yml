@@ -38,8 +38,12 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: ADK structure check
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: ADK offline structure check
         run: npx adk check
 
-      - name: ADK production build
-        run: npx adk build
+      # Full `adk build` resolves live Botpress interfaces and therefore
+      # requires authentication. It runs in the guarded deploy workflow
+      # after BOTPRESS_PAT has been supplied through GitHub Actions Secrets.
