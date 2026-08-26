@@ -1,0 +1,40 @@
+name: ALTER Botpress Check
+
+on:
+  pull_request:
+    paths:
+      - 'ALTER/botpress/**'
+      - '.github/workflows/alter-botpress-check.yml'
+  push:
+    branches:
+      - alter-foundation
+    paths:
+      - 'ALTER/botpress/**'
+      - '.github/workflows/alter-botpress-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ALTER/botpress
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: ADK structure check
+        run: npx adk check
+
+      - name: ADK production build
+        run: npx adk build
