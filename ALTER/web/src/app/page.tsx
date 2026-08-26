@@ -22,15 +22,15 @@ import {
   Settings,
   ShieldCheck,
   Smartphone,
+  SquareTerminal,
   Store,
-  TerminalSquare,
   UsersRound
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { type ComponentType, type FormEvent, useMemo, useState } from "react";
 
 type ModuleItem = {
   label: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
   state?: "ready" | "planned" | "attention";
 };
 
@@ -38,7 +38,7 @@ const modules: ModuleItem[] = [
   { label: "ALTER", icon: Bot, state: "ready" },
   { label: "Files", icon: Files, state: "ready" },
   { label: "Browser", icon: Globe2, state: "planned" },
-  { label: "Console", icon: TerminalSquare, state: "planned" },
+  { label: "Console", icon: SquareTerminal, state: "planned" },
   { label: "Android", icon: Smartphone, state: "planned" },
   { label: "Rules", icon: ShieldCheck, state: "ready" },
   { label: "Vault", icon: KeyRound, state: "ready" },
